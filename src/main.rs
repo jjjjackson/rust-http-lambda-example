@@ -10,8 +10,8 @@ use tracing::{error, info};
 #[tokio::main]
 async fn main() -> Result<(), Error> {
     tracing_subscriber::fmt()
+        .json()
         .with_max_level(tracing::Level::INFO)
-        .without_time()
         .init();
 
     // Define a layer to inject CORS headers
@@ -36,9 +36,9 @@ struct Name {
 
 async fn func(event: Request) -> Result<Response<Body>, Error> {
     info!(
-        "[FUNC] query uri path: {:?}, method: {:?}",
-        event.uri().path(),
-        event.method()
+        tag = "func",
+        path = format!("{}", event.uri().path()),
+        method = format!("{}", event.method()),
     );
     let (status, response) = match event.uri().path() {
         "/name" => match *event.method() {
@@ -60,6 +60,7 @@ fn not_found() -> Result<(StatusCode, Value), Error> {
 }
 
 async fn get_name_handler(event: &Request) -> Result<(StatusCode, Value), Error> {
+    let tag = "get name";
     let query = event.query_string_parameters();
     if let (Some(first_name), Some(last_name)) =
         (query.first("first_name"), query.first("last_name"))
@@ -72,17 +73,27 @@ async fn get_name_handler(event: &Request) -> Result<(StatusCode, Value), Error>
             json!({ "message": format!("Hello {} {}", params.first_name, params.last_name) });
         Ok((StatusCode::OK, resp))
     } else {
-        error!("[GET_NAME_HANDLER] params deserializing failed");
+        error!(
+            tag,
+            query = format!("{query:?}"),
+            message = "params deserializing failed"
+        );
         Ok((StatusCode::FORBIDDEN, Value::Null))
     }
 }
 
 async fn post_name_handler(event: &Request) -> Result<(StatusCode, Value), Error> {
+    let tag = "update name";
     let params = match event.body() {
         Body::Text(text) => {
-            info!("[POST_NAME_HANDLER] {:?}", text);
-            serde_json::from_str(text).unwrap_or_else(|e| {
-                error!("[POST_NAME_HANDLER] parse failed error{e:?}, {text:?}");
+            info!(tag, text);
+            serde_json::from_str(text).unwrap_or_else(|error| {
+                error!(
+                    tag,
+                    text,
+                    message = "parse failed",
+                    error = format!("{error:?}")
+                );
                 Value::Null
             })
         }
